@@ -14,11 +14,17 @@ public class CustomTiledImage : Image {
         set => m_FlipHorizontal = value;
     }
     
+    [SerializeField] protected bool m_FlipVertical;
+
+    public bool FlipVertical {
+        get => m_FlipVertical;
+        set => m_FlipVertical = value;
+    }
+    
     /// <summary>
     /// Update the UI renderer mesh.
     /// </summary>
     protected override void OnPopulateMesh(VertexHelper toFill) {
-        Debug.Log($"{gameObject.name} OnPopulateMesh {overrideSprite == null} {type != Type.Tiled}");
         if (overrideSprite == null || type != Type.Tiled) {
             base.OnPopulateMesh(toFill);
             return;
@@ -52,7 +58,6 @@ public class CustomTiledImage : Image {
         float tileHeight = (spriteSize.y - border.y - border.w) / multipliedPixelsPerUnit;
 
         border = GetAdjustedBorders(border / multipliedPixelsPerUnit, rect);
-        Debug.Log($"inner=({inner.x}, {inner.y}, {inner.z}, {inner.w})");
 
         var uvMin = new Vector2(inner.x, inner.y);
         var uvMax = new Vector2(inner.z, inner.w);
@@ -75,7 +80,6 @@ public class CustomTiledImage : Image {
 
         if (overrideSprite != null &&
             (hasBorder || overrideSprite.packed || overrideSprite.texture.wrapMode != TextureWrapMode.Repeat)) {
-            Debug.Log($"case 1 overrideSprite?{overrideSprite != null} hasBorder={hasBorder}");
             // Sprite has border, or is not in repeat mode, or cannot be repeated because of packing.
             // We cannot use texture tiling so we will generate a mesh of quads to tile the texture.
 
@@ -85,7 +89,6 @@ public class CustomTiledImage : Image {
             long nTilesW = 0;
             long nTilesH = 0;
             if (fillCenter) {
-                Debug.Log($"case 1.1 ");
                 nTilesW = (long) Math.Ceiling((xMax - xMin) / tileWidth);
                 nTilesH = (long) Math.Ceiling((yMax - yMin) / tileHeight);
 
@@ -96,7 +99,6 @@ public class CustomTiledImage : Image {
                 else {
                     nVertices = nTilesW * nTilesH * 4.0; // 4 vertices per tile
                 }
-                Debug.Log($"tilesW={nTilesW} tilesH={nTilesH} tileWidth={tileWidth} tileHeight={tileHeight} nVertices={nVertices}");
 
                 if (nVertices > 65000.0) {
                     Debug.LogError(
@@ -124,13 +126,10 @@ public class CustomTiledImage : Image {
                     nTilesH = (long) Math.Floor(targetTilesH);
                     tileWidth = (xMax - xMin) / nTilesW;
                     tileHeight = (yMax - yMin) / nTilesH;
-                    Debug.Log($"nVertices > 65k tilesW={nTilesW} tilesH={nTilesH} tileWidth={tileWidth} tileHeight={tileHeight}");
                 }
             }
             else {
-                Debug.Log($"case 1.2 ");
                 if (hasBorder) {
-                    Debug.Log($"case 1.2.1 ");
                     // Texture on the border is repeated only in one direction.
                     nTilesW = (long) Math.Ceiling((xMax - xMin) / tileWidth);
                     nTilesH = (long) Math.Ceiling((yMax - yMin) / tileHeight);
@@ -160,7 +159,6 @@ public class CustomTiledImage : Image {
             }
 
             if (fillCenter) {
-                Debug.Log($"case 1.2+.1 ");
                 // TODO: we could share vertices between quads. If vertex sharing is implemented. update the computation for the number of vertices accordingly.
                 for (long j = 0; j < nTilesH; j++) {
                     float y1 = yMin + j * tileHeight;
@@ -180,13 +178,12 @@ public class CustomTiledImage : Image {
                         }
 
                         AddQuad(toFill, new Vector2(x1, y1) + rect.position, new Vector2(x2, y2) + rect.position, color,
-                            uvMin, clipped);
+                            uvMin, clipped, m_FlipHorizontal && j % 2 == 1, m_FlipVertical && i % 2 == 1);
                     }
                 }
             }
 
             if (hasBorder) {
-                Debug.Log($"case 1.3+.1 ");
                 clipped = uvMax;
                 for (long j = 0; j < nTilesH; j++) {
                     float y1 = yMin + j * tileHeight;
@@ -293,7 +290,7 @@ public class CustomTiledImage : Image {
                         }
 
                         AddQuad(toFill, new Vector2(x1, y1) + rect.position, new Vector2(x2, y2) + rect.position, color,
-                            uvMin, clipped, m_FlipHorizontal && j % 2 == 1);
+                            uvMin, clipped, m_FlipHorizontal && j % 2 == 1, m_FlipVertical && i % 2 == 1);
                     }
                 }
             }
@@ -344,21 +341,15 @@ public class CustomTiledImage : Image {
             uvMin.y = uvMax.y;
             uvMax.y = tmp;
         }
-        Debug.Log($"<color=blue>add_quad(pos_min=({posMin.x}, {posMin.y}), posMax=({posMax.x}, {posMax.y}), uvMin=({uvMin.x}, {uvMin.y}), uvMax=({uvMax.x}, {uvMax.y})</color>");
+        
         int startIndex = vertexHelper.currentVertCount;
-
-        Debug.Log($"add_vert(({posMin.x}, {posMin.y}, 0), {color}, ({uvMin.x}, {uvMin.y}))");
+        
         vertexHelper.AddVert(new Vector3(posMin.x, posMin.y, 0), color, new Vector2(uvMin.x, uvMin.y));
-        Debug.Log($"add_vert(({posMin.x}, {posMax.y}, 0), {color}, ({uvMin.x}, {uvMax.y}))");
         vertexHelper.AddVert(new Vector3(posMin.x, posMax.y, 0), color, new Vector2(uvMin.x, uvMax.y));
-        Debug.Log($"add_vert(({posMax.x}, {posMax.y}, 0), {color}, ({uvMax.x}, {uvMax.y}))");
         vertexHelper.AddVert(new Vector3(posMax.x, posMax.y, 0), color, new Vector2(uvMax.x, uvMax.y));
-        Debug.Log($"add_vert(({posMax.x}, {posMin.y}, 0), {color}, ({uvMax.x}, {uvMin.y}))");
         vertexHelper.AddVert(new Vector3(posMax.x, posMin.y, 0), color, new Vector2(uvMax.x, uvMin.y));
-
-        Debug.Log($"add_triangle({startIndex}, {startIndex + 1}, {startIndex + 2})");
+        
         vertexHelper.AddTriangle(startIndex, startIndex + 1, startIndex + 2);
-        Debug.Log($"add_triangle({startIndex + 2}, {startIndex + 3}, {startIndex})");
         vertexHelper.AddTriangle(startIndex + 2, startIndex + 3, startIndex);
     }
 }
